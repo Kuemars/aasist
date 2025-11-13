@@ -140,3 +140,11 @@ dmypy.json
 noise_robust_detector/data/
 noise_robust_detector/models/saved_weights/
 noise_robust_detector/results/
+*.pth
+*.pt
+
+# Existing data directories
+data/
+data_enhanced/
+data_normalized/
+ai_003.wav
