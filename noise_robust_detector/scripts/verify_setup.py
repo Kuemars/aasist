@@ -1,56 +1,69 @@
-"""
-VERIFICATION SCRIPT - Step 1 Completion Check
-"""
-
+# scripts/verify_training_ready.py
 import os
-import sys
+import torch
 
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+print("🔍 VERIFYING TRAINING READINESS")
+print("=" * 60)
 
-from project_config import verify_structure, PROJECT_ROOT
+# Check GPU
+print("\n🎮 GPU Status:")
+if torch.cuda.is_available():
+    print(f"✅ CUDA available")
+    print(f"   GPU: {torch.cuda.get_device_name(0)}")
+    print(f"   Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+else:
+    print("❌ No GPU available - training will be slow!")
 
-def check_python_environment():
-    """Check if required packages are available"""
-    print("🐍 Checking Python environment...")
-    
-    required_packages = [
-        "torch", "torchaudio", "librosa", "numpy", 
-        "soundfile", "matplotlib", "scipy"
-    ]
-    
-    missing_packages = []
-    for package in required_packages:
-        try:
-            __import__(package)
-            print(f"   ✅ {package}")
-        except ImportError:
-            missing_packages.append(package)
-            print(f"   ❌ {package}")
-    
-    if missing_packages:
-        print(f"\n⚠️  Missing packages: {missing_packages}")
-        print("   Run: pip install " + " ".join(missing_packages))
+# Check datasets
+print("\n📁 Dataset Check:")
+real_path = r"D:\sk13382\DataTraining\aasist\noise_robust_detector\data\raw\clean_real"
+ai_path = r"D:\sk13382\DataTraining\aasist\noise_robust_detector\data\raw\clean_ai"
+
+for path, name in [(real_path, "Real Voices"), (ai_path, "AI Voices")]:
+    if os.path.exists(path):
+        files = [f for f in os.listdir(path) if f.endswith('.wav')]
+        print(f"✅ {name}: {len(files)} files")
     else:
-        print("✅ All required packages installed!")
+        print(f"❌ {name}: Path not found")
 
-def main():
-    print("=" * 60)
-    print("NOISE-ROBUST AI VOICE DETECTOR - SETUP VERIFICATION")
-    print("=" * 60)
+# Check AASIST import
+print("\n🤖 AASIST Import Check:")
+try:
+    import sys
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    aasist_root = os.path.dirname(os.path.dirname(script_dir))
+    sys.path.insert(0, aasist_root)
     
-    # Verify project structure
-    verify_structure()
+    from models.AASIST import Model
+    print("✅ AASIST import successful")
     
-    # Check environment
-    check_python_environment()
+    # Test model creation
+    config = {'nb_samp': 64600, 'nb_classes': 2}
+    model = Model(config)
+    print("✅ Model creation successful")
     
-    print("\n" + "=" * 60)
-    print("🎯 NEXT STEPS:")
-    print("1. If all checks pass, proceed to data collection")
-    print("2. If issues found, fix them before continuing")
-    print("=" * 60)
+except Exception as e:
+    print(f"❌ Import failed: {e}")
 
-if __name__ == "__main__":
-    main()
+# Memory check
+print("\n💾 Memory Check:")
+if torch.cuda.is_available():
+    free_memory = torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_allocated()
+    print(f"   Free GPU memory: {free_memory / 1e9:.2f} GB")
+    
+    # Estimate memory needed
+    # 4000 samples * 64600 * 4 bytes = ~1.03 GB for data
+    # Model weights: ~10-50 MB
+    # Batch size 128: ~128 * 64600 * 4 * 4 = ~132 MB per forward/backward
+    estimated_memory = 1.03 + 0.05 + 0.132  # GB
+    print(f"   Estimated required: {estimated_memory:.2f} GB")
+    
+    if free_memory / 1e9 > estimated_memory * 1.5:
+        print("✅ Sufficient memory available")
+    else:
+        print("⚠️  Memory might be tight")
+
+print("\n" + "=" * 60)
+print("🎯 READY FOR TRAINING!")
+print("Run: python scripts/train_precise_fast.py")
+print("=" * 60)
