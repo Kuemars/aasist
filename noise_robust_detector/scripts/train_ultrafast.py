@@ -15,7 +15,7 @@ import time
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(project_root)
-from models.AASIST import Model
+from models.RawNet2Spoof import Model
 
 # OPTIMAL CONFIG - BATCH 192 FOR SPEED + MEMORY SAFETY
 SAMPLE_RATE = 16000
@@ -30,15 +30,19 @@ REAL_PATH = "data/raw/clean_real"
 AI_PATH = "data/raw/clean_ai"
 
 def get_model_config():
-    config_path = os.path.join(project_root, "config/AASIST.conf")
+    """Load RawNet2 config from file or use default"""
+    config_path = os.path.join(project_root, "config/RawNet2_baseline.conf")
     default_config = {
+        "architecture": "RawNet2Spoof",
         "nb_samp": 64600,
-        "nb_classes": 2,
-        "first_conv": 128,
-        "filts": [70, [1, 32], [32, 32], [32, 64], [64, 64]],
-        "gat_dims": [64, 32],
-        "pool_ratios": [0.5, 0.7, 0.5, 0.5],
-        "temperatures": [2.0, 2.0, 100.0, 100.0]
+        "first_conv": 1024,
+        "in_channels": 1,
+        "filts": [20, [20, 20], [20, 128], [128, 128]],
+        "blocks": [2, 4],
+        "nb_fc_node": 1024,
+        "gru_node": 1024,
+        "nb_gru_layer": 3,
+        "nb_classes": 2
     }
     
     if os.path.exists(config_path):
@@ -166,10 +170,10 @@ def train_optimal():
     model = Model(model_config).to(device)
     
     # Load pre-trained weights
-    weights_path = os.path.join(project_root, "models/weights/AASIST.pth")
-    if os.path.exists(weights_path):
-        print(f"Loading pre-trained weights...")
-        model.load_state_dict(torch.load(weights_path, map_location=device))
+    # weights_path = os.path.join(project_root, "models/weights/AASIST.pth")
+    # if os.path.exists(weights_path):
+    #    print(f"Loading pre-trained weights...")
+    #    model.load_state_dict(torch.load(weights_path, map_location=device))
     
     # Mixed precision
     scaler = GradScaler() if USE_AMP else None
@@ -211,6 +215,7 @@ def train_optimal():
                 output = model(data)[1]
                 loss = criterion(output, target)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
             
             train_loss += loss.item()
