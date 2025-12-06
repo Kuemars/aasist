@@ -179,7 +179,7 @@ def train_optimal():
     scaler = GradScaler() if USE_AMP else None
     
     # Optimizer
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
     
     # Early stopping
@@ -251,7 +251,7 @@ def train_optimal():
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             patience_counter = 0
-            torch.save(model.state_dict(), 'models/aasist_best.pth')
+            torch.save(model.state_dict(), 'models/rawnet2_v1.pth')
             print(f"   🏆 New best! Saving model...")
         else:
             patience_counter += 1

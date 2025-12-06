@@ -47,6 +47,36 @@ def get_model_config():
             pass
     return default_config
 
+def analyze_pitch_variance(audio_path):
+    """Analyze pitch variance with proper filtering"""
+    try:
+        audio, sr = librosa.load(audio_path, sr=16000, duration=4.0)
+        
+        # Get pitch using YIN
+        pitches = librosa.yin(audio, fmin=50, fmax=500)
+        
+        # FILTER: Only keep realistic human pitch range (50-500 Hz)
+        pitches = pitches[(pitches > 50) & (pitches < 500)]
+        
+        # Need at least 10 valid pitch points
+        if len(pitches) < 10:
+            return "Not enough voiced segments"
+        
+        # Calculate LOG variance (pitch varies multiplicatively, not additively)
+        log_pitches = np.log(pitches)
+        variance = np.var(log_pitches)  # Variance in log space
+        
+        # REALISTIC thresholds (tune these):
+        if variance < 0.01:  # Very consistent pitch
+            return f"AI-like (log variance: {variance:.4f})"
+        elif variance < 0.05:  # Normal human variation
+            return f"Human-like (log variance: {variance:.4f})"
+        else:  # Extreme variation
+            return f"Character-like (log variance: {variance:.4f})"
+            
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 def load_and_preprocess_audio(file_path):
     """Load and preprocess audio exactly like training"""
     audio, sr = librosa.load(file_path, sr=SAMPLE_RATE, duration=4.04)
@@ -66,7 +96,7 @@ def detect_voices():
     print("=" * 60)
     
     # Check for model
-    model_path = "models/rawnet2_correct.pth"
+    model_path = "models/rawnet2_v1.pth"
     if not os.path.exists(model_path):
         print(f"❌ Model not found at {model_path}")
         print("Looking for other saved models...")
@@ -137,8 +167,8 @@ def detect_voices():
                 probabilities = torch.exp(log_probs)
                 
                 # CORRECTED: Class 0 = AI, Class 1 = HUMAN
-                ai_prob = probabilities[0, 0].item() * 100    # Class 0 = AI
-                human_prob = probabilities[0, 1].item() * 100  # Class 1 = Human
+                human_prob = probabilities[0, 0].item() * 100    # Class 0: HUMAN (what model learned)
+                ai_prob = probabilities[0, 1].item() * 100      # Class 1: AI (what model learned)
             
             # Determine prediction
             if human_prob > ai_prob:
@@ -199,6 +229,14 @@ def detect_voices():
             print(f"   Prediction: {prediction} ({confidence:.1f}% confident)")
             print(f"   Human: {human_prob:.1f}% | AI: {ai_prob:.1f}%")
             
+            pitch_info = analyze_pitch_variance(file_path)
+            print(f"   Pitch analysis: {pitch_info}")
+            if 40 < confidence < 60:  # Uncertain range
+                if "AI-like" in pitch_info:
+                    print(f"   ⚠️  Pitch suggests AI")
+                elif "Human-like" in pitch_info:
+                    print(f"   ⚠️  Pitch suggests HUMAN")
+
             if ground_truth:
                 print(f"   Ground truth: {ground_truth}")
                 if not is_correct:
