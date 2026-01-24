@@ -11,27 +11,51 @@ from torch.cuda.amp import autocast, GradScaler
 from sklearn.model_selection import train_test_split
 import time
 
-# Add paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
-sys.path.append(project_root)
-from models.RawNet2Spoof import Model
+# ============================================================================
+# FIXED PATH CONFIGURATION
+# ============================================================================
 
-# OPTIMAL CONFIG - BATCH 192 FOR SPEED + MEMORY SAFETY
+# Get the absolute path of THIS script
+current_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Determine if we're running from scripts/ folder or root
+if os.path.basename(current_script_dir) == 'scripts':
+    # Running from scripts folder
+    PROJECT_ROOT = os.path.dirname(current_script_dir)  # Go up one level
+    print(f"📂 Running from scripts folder, root: {PROJECT_ROOT}")
+else:
+    # Running from root or elsewhere
+    PROJECT_ROOT = current_script_dir
+    print(f"📂 Running from root folder: {PROJECT_ROOT}")
+
+# Add project root to Python path
+sys.path.insert(0, PROJECT_ROOT)
+
+# ============================================================================
+# TRAINING CONFIGURATION
+# ============================================================================
+
 SAMPLE_RATE = 16000
 AUDIO_LENGTH = 64600
-BATCH_SIZE = 192  # OPTIMAL: Faster than 128, fits in VRAM
+BATCH_SIZE = 192
 EPOCHS = 50
 LEARNING_RATE = 0.0001
 USE_AMP = True
 
-# PATHS
-REAL_PATH = "data/raw/clean_real"
-AI_PATH = "data/raw/clean_ai"
+# ============================================================================
+# FIXED PATHS
+# ============================================================================
+
+REAL_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "clean_real")
+AI_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "clean_ai")
+
+# Model save path
+MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "models", "weights")
+os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
 
 def get_model_config():
     """Load RawNet2 config from file or use default"""
-    config_path = os.path.join(project_root, "config/RawNet2_baseline.conf")
+    config_path = os.path.join(PROJECT_ROOT, "config", "RawNet2_baseline.conf")
     default_config = {
         "architecture": "RawNet2Spoof",
         "nb_samp": 64600,
@@ -66,7 +90,7 @@ def preload_all_audio_files(real_files, ai_files):
     all_labels = []
     
     # Load real voices
-    print("Loading real voices...")
+    print(f"📂 Loading real voices from: {REAL_PATH}")
     for i, file in enumerate(real_files):
         if i % 400 == 0:
             print(f"  Real: {i}/{len(real_files)}")
@@ -80,7 +104,7 @@ def preload_all_audio_files(real_files, ai_files):
         all_labels.append(0)
     
     # Load AI voices
-    print("Loading AI voices...")
+    print(f"📂 Loading AI voices from: {AI_PATH}")
     for i, file in enumerate(ai_files):
         if i % 400 == 0:
             print(f"  AI: {i}/{len(ai_files)}")
@@ -109,24 +133,24 @@ def train_optimal():
     ai_files = [os.path.join(AI_PATH, f) for f in os.listdir(AI_PATH) 
                 if f.endswith('.wav')]
     
-    print(f"Dataset: {len(real_files)} real, {len(ai_files)} AI")
+    print(f"📊 Dataset: {len(real_files)} real, {len(ai_files)} AI")
     
     # PRE-LOAD to RAM (not GPU yet)
     audio_data, labels_data = preload_all_audio_files(real_files, ai_files)
     load_time = time.time() - start_time
-    print(f"Data loading time: {load_time:.1f}s")
+    print(f"⏱️ Data loading time: {load_time:.1f}s")
     
     # Split indices
     indices = np.arange(len(audio_data))
     train_idx, temp_idx = train_test_split(indices, test_size=0.3, random_state=42, shuffle=True)
     val_idx, test_idx = train_test_split(temp_idx, test_size=0.5, random_state=42, shuffle=True)
     
-    print(f"\nSplits: Train={len(train_idx)}, Val={len(val_idx)}, Test={len(test_idx)}")
+    print(f"📈 Splits: Train={len(train_idx)}, Val={len(val_idx)}, Test={len(test_idx)}")
     
     # Device
     device = torch.device('cuda')
-    print(f"Device: {device}")
-    print(f"GPU Memory before: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+    print(f"🖥️ Device: {device}")
+    print(f"💾 GPU Memory before: {torch.cuda.memory_allocated()/1e9:.2f} GB")
     
     # Create datasets (will load to GPU on-demand)
     train_dataset = TensorDataset(
@@ -165,15 +189,20 @@ def train_optimal():
         pin_memory=True
     )
     
-    # Model
+    # Model - FIXED IMPORT PATH
+    try:
+        # Try relative import
+        from models.RawNet2Spoof import Model
+        print("✅ Successfully imported RawNet2Spoof model")
+    except ImportError:
+        # Try absolute import
+        import sys
+        sys.path.append(PROJECT_ROOT)
+        from models.RawNet2Spoof import Model
+        print("✅ Successfully imported RawNet2Spoof model (using absolute path)")
+    
     model_config = get_model_config()
     model = Model(model_config).to(device)
-    
-    # Load pre-trained weights
-    # weights_path = os.path.join(project_root, "models/weights/AASIST.pth")
-    # if os.path.exists(weights_path):
-    #    print(f"Loading pre-trained weights...")
-    #    model.load_state_dict(torch.load(weights_path, map_location=device))
     
     # Mixed precision
     scaler = GradScaler() if USE_AMP else None
@@ -226,7 +255,7 @@ def train_optimal():
             # Show progress every 2 batches
             if batch_idx % 2 == 0:
                 batch_acc = 100 * (preds == target).sum().item() / target.size(0)
-                print(f"Epoch {epoch+1}, Batch {batch_idx}: Loss={loss.item():.4f}, Acc={batch_acc:.1f}%")
+                print(f"📊 Epoch {epoch+1}, Batch {batch_idx}: Loss={loss.item():.4f}, Acc={batch_acc:.1f}%")
         
         # Validation
         model.eval()
@@ -242,7 +271,7 @@ def train_optimal():
         val_acc = 100 * val_correct / len(val_idx)
         epoch_time = time.time() - epoch_start
         
-        print(f"\n📊 Epoch {epoch+1} ({epoch_time:.1f}s):")
+        print(f"\n📈 Epoch {epoch+1} ({epoch_time:.1f}s):")
         print(f"   Train Loss: {train_loss/batch_count:.4f}, Train Acc: {train_acc:.1f}%")
         print(f"   Val Acc: {val_acc:.1f}%")
         print(f"   Batches: {batch_count}, Time/batch: {epoch_time/batch_count:.2f}s")
@@ -251,8 +280,9 @@ def train_optimal():
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             patience_counter = 0
-            torch.save(model.state_dict(), 'models/rawnet2_v1.pth')
-            print(f"   🏆 New best! Saving model...")
+            model_save_path = os.path.join(MODEL_SAVE_DIR, 'rawnet2_v1.pth')
+            torch.save(model.state_dict(), model_save_path)
+            print(f"   🏆 New best! Saving model to {model_save_path}")
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -260,8 +290,10 @@ def train_optimal():
                 break
     
     # Final test with best model
-    if os.path.exists('models/aasist_best.pth'):
-        model.load_state_dict(torch.load('models/aasist_best.pth'))
+    best_model_path = os.path.join(MODEL_SAVE_DIR, 'rawnet2_v1.pth')
+    if os.path.exists(best_model_path):
+        print(f"🔍 Loading best model from {best_model_path} for testing...")
+        model.load_state_dict(torch.load(best_model_path))
     
     model.eval()
     test_correct = 0
@@ -275,12 +307,49 @@ def train_optimal():
     test_acc = 100 * test_correct / len(test_idx)
     total_time = time.time() - start_time
     
+    # SAVE RESULTS
+    results_dir = os.path.join(PROJECT_ROOT, "results")
+    os.makedirs(results_dir, exist_ok=True)
+    results_path = os.path.join(results_dir, "training_results.json")
+    
+    results = {
+        "test_accuracy": test_acc,
+        "best_val_accuracy": best_val_acc,
+        "total_training_time_seconds": total_time,
+        "total_training_time_minutes": total_time / 60,
+        "model_saved_at": best_model_path,
+        "training_config": {
+            "batch_size": BATCH_SIZE,
+            "epochs": EPOCHS,
+            "learning_rate": LEARNING_RATE,
+            "audio_length": AUDIO_LENGTH,
+            "sample_rate": SAMPLE_RATE,
+            "use_amp": USE_AMP
+        },
+        "dataset_stats": {
+            "total_samples": len(audio_data),
+            "train_samples": len(train_idx),
+            "val_samples": len(val_idx),
+            "test_samples": len(test_idx),
+            "real_files": len(real_files),
+            "ai_files": len(ai_files)
+        }
+    }
+    
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    
     print(f"\n🎯 FINAL RESULTS:")
     print(f"   Test Accuracy: {test_acc:.1f}%")
     print(f"   Best Val Accuracy: {best_val_acc:.1f}%")
     print(f"   Total training time: {total_time/60:.1f} minutes")
-    print(f"   Model saved: models/aasist_best.pth")
+    print(f"   📄 Results saved to: {results_path}")
+    print(f"   💾 Model saved to: {best_model_path}")
     print("=" * 60)
 
 if __name__ == "__main__":
+    # Create necessary directories
+    os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
+    
+    # Run training
     train_optimal()

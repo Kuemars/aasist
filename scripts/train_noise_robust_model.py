@@ -11,11 +11,27 @@ import json
 import glob
 from sklearn.model_selection import train_test_split
 
-# Add paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
-sys.path.append(project_root)
-from models.RawNet2Spoof import Model
+# ============================================================================
+# FIXED PATH CONFIGURATION
+# ============================================================================
+
+# Get the absolute path of THIS script
+current_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Determine if we're running from scripts/ folder or root
+if os.path.basename(current_script_dir) == 'scripts':
+    # Running from scripts folder
+    PROJECT_ROOT = os.path.dirname(current_script_dir)  # Go up one level
+else:
+    # Running from root or elsewhere
+    PROJECT_ROOT = current_script_dir
+
+# Add project root to Python path
+sys.path.insert(0, PROJECT_ROOT)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 # Config
 SAMPLE_RATE = 16000
@@ -28,16 +44,15 @@ def verify_label_mapping():
     """Verify that our labeling matches ORIGINAL MODEL: Class 0 = HUMAN, Class 1 = AI"""
     print("\n🔍 VERIFYING LABEL MAPPING (Standardized to Original Model)...")
     
-    # Test with known samples
-    ai_sample = "data/raw/clean_ai/ai_0000.wav"
-    human_sample = "data/raw/clean_real/real_0001.wav"
+    # Test with known samples - FIXED PATHS
+    ai_sample = os.path.join(PROJECT_ROOT, "data", "raw", "clean_ai", "ai_0000.wav")
+    human_sample = os.path.join(PROJECT_ROOT, "data", "raw", "clean_real", "real_0001.wav")
     
     if os.path.exists(ai_sample) and os.path.exists(human_sample):
         print("STANDARDIZED MAPPING:")
         print(f"  {os.path.basename(human_sample)} → Label 0 (HUMAN)")
         print(f"  {os.path.basename(ai_sample)} → Label 1 (AI)")
         print("\n✅ Standardized mapping: Class 0 = HUMAN, Class 1 = AI")
-        
         return True
     else:
         print("⚠️  Test files not found")
@@ -186,11 +201,11 @@ def train_noise_robust_model():
         print("❌ Label verification failed. Aborting.")
         return
     
-    # Get all files
-    real_clean = glob.glob("data/raw/clean_real/*.wav")
-    real_aug = glob.glob("data/augmented_balanced/human/*.wav")
-    ai_clean = glob.glob("data/raw/clean_ai/*.wav")
-    ai_aug = glob.glob("data/augmented_balanced/ai/*.wav")
+    # Get all files - FIXED PATHS
+    real_clean = glob.glob(os.path.join(PROJECT_ROOT, "data", "raw", "clean_real", "*.wav"))
+    real_aug = glob.glob(os.path.join(PROJECT_ROOT, "data", "augmented_balanced", "human", "*.wav"))
+    ai_clean = glob.glob(os.path.join(PROJECT_ROOT, "data", "raw", "clean_ai", "*.wav"))
+    ai_aug = glob.glob(os.path.join(PROJECT_ROOT, "data", "augmented_balanced", "ai", "*.wav"))
     
     print(f"\n📁 Found files:")
     print(f"  Clean human: {len(real_clean)}")
@@ -219,6 +234,14 @@ def train_noise_robust_model():
     # Model
     device = torch.device('cuda')
     print(f"\n📱 Using device: {device}")
+    
+    # Model import - FIXED
+    try:
+        from models.RawNet2Spoof import Model
+    except ImportError:
+        # Alternative import
+        sys.path.append(os.path.join(PROJECT_ROOT, "models"))
+        from RawNet2Spoof import Model
     
     d_args = {
         "architecture": "RawNet2Spoof",
@@ -316,7 +339,9 @@ def train_noise_robust_model():
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             patience_counter = 0
-            torch.save(model.state_dict(), 'models/rawnet2_noise_robust_fixed.pth')
+            # FIXED MODEL SAVE PATH
+            model_save_path = os.path.join(PROJECT_ROOT, "models", "weights", "AI_Model_Noise_Robust_v0.pth")
+            torch.save(model.state_dict(), model_save_path)
             print(f"  🏆 New best model saved!")
         else:
             patience_counter += 1
@@ -328,18 +353,22 @@ def train_noise_robust_model():
     
     print(f"\n✅ TRAINING COMPLETE!")
     print(f"🎯 Best validation accuracy: {best_val_acc:.1f}%")
-    print(f"💾 Model saved: models/rawnet2_noise_robust_fixed.pth")
+    # FIXED PATH IN PRINT
+    print(f"💾 Model saved: {os.path.join(PROJECT_ROOT, 'models', 'weights', 'AI_Model_Noise_Robust_v0.pth')}")
     
     # Load best model for final verification
+    # FIXED MODEL LOAD PATH
+    model_save_path = os.path.join(PROJECT_ROOT, "models", "weights", "AI_Model_Noise_Robust_v0.pth")
     print(f"\n🧪 Final verification on known samples...")
-    model.load_state_dict(torch.load('models/rawnet2_noise_robust_fixed.pth'))
+    model.load_state_dict(torch.load(model_save_path))
     model.eval()
     
+    # FIXED TEST SAMPLE PATHS
     test_samples = [
-        ("data/raw/clean_ai/ai_0000.wav", "AI (clean)", 1),
-        ("data/raw/clean_real/real_0001.wav", "HUMAN (clean)", 0),
-        ("data/augmented_balanced/ai/aug_ai_0002.wav", "AI (augmented)", 1),
-        ("data/augmented_balanced/human/aug_real_0007.wav", "HUMAN (augmented)", 0)
+        (os.path.join(PROJECT_ROOT, "data", "raw", "clean_ai", "ai_0000.wav"), "AI (clean)", 1),
+        (os.path.join(PROJECT_ROOT, "data", "raw", "clean_real", "real_0001.wav"), "HUMAN (clean)", 0),
+        (os.path.join(PROJECT_ROOT, "data", "augmented_balanced", "ai", "aug_ai_0002.wav"), "AI (augmented)", 1),
+        (os.path.join(PROJECT_ROOT, "data", "augmented_balanced", "human", "aug_real_0007.wav"), "HUMAN (augmented)", 0)
     ]
     
     correct = 0

@@ -9,28 +9,66 @@ import warnings
 warnings.filterwarnings('ignore')
 os.environ['JOBLIB_MULTIPROCESSING'] = '0'
 
-# Add paths
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(current_dir))
-sys.path.append(project_root)
+# ============================================================================
+# FIXED PATH CONFIGURATION
+# ============================================================================
+
+# Get the absolute path of THIS script
+current_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Determine if we're running from scripts/ folder or root
+if os.path.basename(current_script_dir) == 'scripts':
+    # Running from scripts folder
+    PROJECT_ROOT = os.path.dirname(current_script_dir)  # Go up one level
+    print(f"📂 Running from scripts folder, root: {PROJECT_ROOT}")
+else:
+    # Running from root or elsewhere
+    PROJECT_ROOT = current_script_dir
+    print(f"📂 Running from root folder: {PROJECT_ROOT}")
+
+# Add project root to Python path
+sys.path.insert(0, PROJECT_ROOT)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 from models.RawNet2Spoof import Model
 
-# Try to import pitch detector
+# Try to import pitch detector - SIMPLIFIED VERSION
 try:
-    from pitch_detector import load_pitch_classifier, predict_with_pitch
-    PITCH_CLF_AVAILABLE = True
-except ImportError:
+    # First try to import the simplified version
+    pitch_detector_path = os.path.join(PROJECT_ROOT, "scripts", "pitch_detector.py")
+    if os.path.exists(pitch_detector_path):
+        # Add scripts directory to path
+        sys.path.append(os.path.join(PROJECT_ROOT, "scripts"))
+        from pitch_detector import load_pitch_classifier, predict_with_pitch
+        PITCH_CLF_AVAILABLE = True
+        print(f"✅ Pitch detector found at: {pitch_detector_path}")
+    else:
+        print(f"⚠️ Pitch detector not found at: {pitch_detector_path}")
+        PITCH_CLF_AVAILABLE = False
+except ImportError as e:
+    print(f"⚠️ Could not import pitch detector: {e}")
+    # Create a fallback function
+    def fallback_predict_with_pitch(audio_path, classifier=None):
+        return None, None, None
+    def fallback_load_pitch_classifier():
+        print("⚠️ Using fallback pitch detector")
+        return None
+    
+    predict_with_pitch = fallback_predict_with_pitch
+    load_pitch_classifier = fallback_load_pitch_classifier
     PITCH_CLF_AVAILABLE = False
 
 # Config
 SAMPLE_RATE = 16000
 AUDIO_LENGTH = 64600
-TEST_FOLDER = "test_demo"
+TEST_FOLDER = os.path.join(PROJECT_ROOT, "test_demo")
 
 def get_model_config():
     """Load RawNet2 config"""
-    config_path = os.path.join(project_root, "config/RawNet2_baseline.conf")
+    config_path = os.path.join(PROJECT_ROOT, "config", "RawNet2_baseline.conf")
     default_config = {
         "architecture": "RawNet2Spoof",
         "nb_samp": 64600,
@@ -75,14 +113,15 @@ def detect_voices():
     print("⚠️  INTERPRETATION: Class 0 = HUMAN, Class 1 = AI")
     print("=" * 60)
     
-    # Check for main model
-    model_path = "models/AI_detector_Model_v1.pth"
+    # Check for main model - FIXED PATH
+    model_path = os.path.join(PROJECT_ROOT, "models", "weights", "AI_Model_Noise_Robust_v0.pth")
     if not os.path.exists(model_path):
         print(f"❌ Main model not found at {model_path}")
         print("Looking for other models...")
-        model_files = [f for f in os.listdir('models') if f.endswith('.pth')]
+        models_dir = os.path.join(PROJECT_ROOT, "models", "weights")
+        model_files = [f for f in os.listdir(models_dir) if f.endswith('.pth')]
         if model_files:
-            model_path = f"models/{model_files[0]}"
+            model_path = os.path.join(models_dir, model_files[0])
             print(f"Using: {model_path}")
         else:
             print("No model files found in 'models/' folder")
@@ -101,43 +140,54 @@ def detect_voices():
     model = Model(d_args).to(device)
     
     # Load trained weights
-    print(f"📥 Loading neural network from {model_path}")
+    print(f"📥 Loading NOISE-ROBUST neural network from {model_path}")
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     print(f"✅ Neural network loaded")
     
     # Load pitch classifier if available
+    pitch_clf = None
     if PITCH_CLF_AVAILABLE:
-        pitch_clf = load_pitch_classifier()
-        if pitch_clf:
-            print(f"✅ Pitch classifier loaded (84.5% accuracy)")
-        else:
-            print(f"⚠️  Pitch classifier not available")
+        try:
+            pitch_clf = load_pitch_classifier()
+            if pitch_clf:
+                print(f"✅ Pitch classifier loaded (84.5% accuracy)")
+            else:
+                print(f"⚠️  Pitch classifier not available")
+        except Exception as e:
+            print(f"⚠️  Error loading pitch classifier: {e}")
             pitch_clf = None
     else:
-        print(f"⚠️  Pitch detector module not installed")
-        pitch_clf = None
+        print(f"⚠️  Pitch detector module not available")
     
-    # Get test files
+    # Get test files - FIXED PATHS
     test_files = []
     if os.path.exists(TEST_FOLDER):
         test_files = [os.path.join(TEST_FOLDER, f) for f in os.listdir(TEST_FOLDER) 
                      if f.endswith('.wav') or f.endswith('.mp3')]
     
-    # Add verification samples
+    # Add verification samples - FIXED PATHS
     verify_samples = []
-    real_train_sample = "data/raw/clean_real/real_0001.wav"
-    ai_train_sample = "data/raw/clean_ai/ai_0000.wav"
+    real_train_sample = os.path.join(PROJECT_ROOT, "data", "raw", "clean_real", "real_0001.wav")
+    ai_train_sample = os.path.join(PROJECT_ROOT, "data", "raw", "clean_ai", "ai_0000.wav")
     
     if os.path.exists(real_train_sample):
         verify_samples.append((real_train_sample, "KNOWN_REAL"))
+        print(f"✅ Found real sample: {real_train_sample}")
+    else:
+        print(f"⚠️  Real sample not found: {real_train_sample}")
+    
     if os.path.exists(ai_train_sample):
         verify_samples.append((ai_train_sample, "KNOWN_AI"))
+        print(f"✅ Found AI sample: {ai_train_sample}")
+    else:
+        print(f"⚠️  AI sample not found: {ai_train_sample}")
     
     all_files = verify_samples + [(f, "TEST") for f in test_files]
     
     if not all_files:
         print(f"\n📁 No audio files found")
+        print(f"Test folder: {TEST_FOLDER}")
         return
     
     print(f"\n🔍 Testing {len(all_files)} audio files:")
@@ -149,13 +199,21 @@ def detect_voices():
     
     for file_path, file_type in all_files:
         try:
+            if not os.path.exists(file_path):
+                print(f"❌ File not found: {file_path}")
+                continue
+                
             # Preprocess for neural network
             audio_tensor = load_and_preprocess_audio(file_path).to(device)
             
             # Neural network prediction
             with torch.no_grad():
                 output = model(audio_tensor)
-                log_probs = output[1]  # Get logsoftmax output [batch, 2]
+                # IMPORTANT: Check output structure
+                if isinstance(output, tuple) and len(output) >= 2:
+                    log_probs = output[1]  # Get logsoftmax output [batch, 2]
+                else:
+                    log_probs = output
                 probabilities = torch.exp(log_probs)
                 
                 # IMPORTANT: Class 0 = HUMAN, Class 1 = AI (as model learned)
@@ -176,19 +234,23 @@ def detect_voices():
             pitch_analysis = ""
             
             if pitch_clf:
-                pitch_pred, pitch_conf, pitch_feats = predict_with_pitch(file_path, pitch_clf)
-                if pitch_pred is not None:
-                    pitch_prediction = "HUMAN" if pitch_pred == 1 else "AI"
-                    pitch_confidence = pitch_conf * 100  # Convert to percentage
-                    
-                    # Analyze pitch features
-                    if pitch_feats is not None:
-                        if pitch_feats[0] > 0.15:  # High log variance
-                            pitch_analysis += "High pitch variance. "
-                        if pitch_feats[2] < 80:  # Very low mean pitch
-                            pitch_analysis += "Unusually low pitch. "
-                        if pitch_feats[5] > 0.9:  # High voiced ratio
-                            pitch_analysis += "High voiced ratio. "
+                try:
+                    pitch_pred, pitch_conf, pitch_feats = predict_with_pitch(file_path, pitch_clf)
+                    if pitch_pred is not None:
+                        pitch_prediction = "HUMAN" if pitch_pred == 1 else "AI"
+                        pitch_confidence = pitch_conf * 100  # Convert to percentage
+                        
+                        # Analyze pitch features
+                        if pitch_feats is not None:
+                            if len(pitch_feats) > 0 and pitch_feats[0] > 0.15:  # High log variance
+                                pitch_analysis += "High pitch variance. "
+                            if len(pitch_feats) > 2 and pitch_feats[2] < 80:  # Very low mean pitch
+                                pitch_analysis += "Unusually low pitch. "
+                            if len(pitch_feats) > 5 and pitch_feats[5] > 0.9:  # High voiced ratio
+                                pitch_analysis += "High voiced ratio. "
+                except Exception as e:
+                    print(f"⚠️  Error in pitch detection: {e}")
+                    pitch_prediction = "ERROR"
             
             filename = os.path.basename(file_path)
             
@@ -230,7 +292,7 @@ def detect_voices():
             print(f"   Neural Network: {nn_prediction} ({nn_confidence:.1f}% confident)")
             print(f"   Human: {human_prob:.1f}% | AI: {ai_prob:.1f}%")
             
-            if pitch_prediction != "N/A":
+            if pitch_prediction != "N/A" and pitch_prediction != "ERROR":
                 print(f"   Pitch Classifier: {pitch_prediction} ({pitch_confidence:.1f}% confident)")
                 
                 # Highlight disagreements
@@ -245,6 +307,8 @@ def detect_voices():
                 
                 if pitch_analysis:
                     print(f"   📊 Pitch insights: {pitch_analysis}")
+            elif pitch_prediction == "ERROR":
+                print(f"   ⚠️  Pitch Classifier: Error in analysis")
             
             if ground_truth:
                 if is_correct:
@@ -264,6 +328,8 @@ def detect_voices():
             
         except Exception as e:
             print(f"\n❌ Error processing {os.path.basename(file_path)}: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Summary
     print("\n" + "=" * 60)
@@ -288,7 +354,7 @@ def detect_voices():
         print(f"   Average neural network confidence: {avg_nn_confidence:.1f}%")
         
         if pitch_clf:
-            pitch_with_data = [r for r in results if r['pitch_prediction'] != 'N/A']
+            pitch_with_data = [r for r in results if r['pitch_prediction'] not in ['N/A', 'ERROR']]
             if pitch_with_data:
                 avg_pitch_confidence = sum(r['pitch_confidence'] for r in pitch_with_data) / len(pitch_with_data)
                 print(f"   Average pitch classifier confidence: {avg_pitch_confidence:.1f}%")
@@ -307,25 +373,29 @@ def detect_voices():
     
     # Calculate agreement rate
     if pitch_clf:
-        agreements = sum(1 for r in results if r['pitch_prediction'] != 'N/A' 
+        agreements = sum(1 for r in results if r['pitch_prediction'] not in ['N/A', 'ERROR'] 
                         and r['nn_prediction'] == r['pitch_prediction'])
-        total_comparable = sum(1 for r in results if r['pitch_prediction'] != 'N/A')
+        total_comparable = sum(1 for r in results if r['pitch_prediction'] not in ['N/A', 'ERROR'])
         
         if total_comparable > 0:
             agreement_rate = 100 * agreements / total_comparable
             print(f"\n🤝 AGREEMENT RATE (Neural Net vs Pitch): {agreement_rate:.1f}%")
             print(f"   Agree: {agreements}/{total_comparable}")
     
-    # Save results
+    # Save results - FIXED PATH
     if results:
-        with open('hybrid_detection_results.csv', 'w', newline='') as f:
+        results_dir = os.path.join(PROJECT_ROOT, "results", "test_results")
+        os.makedirs(results_dir, exist_ok=True)
+        
+        results_path = os.path.join(results_dir, "hybrid_detection_results.csv")
+        with open(results_path, 'w', newline='') as f:
             fieldnames = ['file', 'type', 'nn_prediction', 'nn_confidence', 
                          'nn_human_prob', 'nn_ai_prob', 'pitch_prediction', 
                          'pitch_confidence', 'pitch_analysis', 'ground_truth', 'correct']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(results)
-        print(f"\n💾 Results saved to 'hybrid_detection_results.csv'")
+        print(f"\n💾 Results saved to '{results_path}'")
     
     print("\n" + "=" * 60)
     print("ℹ️  SYSTEM COMPONENTS:")

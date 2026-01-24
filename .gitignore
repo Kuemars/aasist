@@ -136,36 +136,84 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Noise robust detector - don't track large files
-noise_robust_detector/data/
-noise_robust_detector/models/saved_weights/
-noise_robust_detector/results/
+# ============================================================================
+# CUSTOM EXCLUSIONS FOR THIS PROJECT
+# ============================================================================
+
+# Exclude ALL model weights (they're large binary files)
+models/weights/
 *.pth
 *.pt
+*.pkl
+*.joblib
 
-# Existing data directories
+# Exclude ALL data folder contents (audio files are large)
 data/
+!data/raw/clean_real/  # Keep directory structure
+data/raw/clean_real/*.wav  # But exclude actual audio files
+!data/raw/clean_ai/    # Keep directory structure  
+data/raw/clean_ai/*.wav  # But exclude actual audio files
+!data/augmented_balanced/human/  # Keep directory structure
+data/augmented_balanced/human/*.wav  # But exclude actual audio files
+!data/augmented_balanced/ai/  # Keep directory structure
+data/augmented_balanced/ai/*.wav  # But exclude actual audio files
+!data/raw/noise_samples/  # Keep directory structure
+data/raw/noise_samples/*  # But exclude all noise samples
+
+# Exclude test demo folder contents (sample audio files)
+!test_demo/  # Keep the directory
+test_demo/*.wav  # But exclude WAV files
+test_demo/*.mp3  # But exclude MP3 files
+
+# Exclude results folder (generated files)
+results/
+!results/  # Keep directory
+results/*  # But exclude all contents
+
+# Exclude any large generated files
+*.csv
+hybrid_detection_results.csv
+
+# Legacy exclusions from previous projects
+noise_robust_detector/
 data_enhanced/
 data_normalized/
 ai_003.wav
 
-# Data exclusions
-noise_robust_detector/data/
-*.wav
-*.flac
-*.mp3
+# Exclude cache and temp files
+.cache/
+temp/
+tmp/
+*.tmp
+*.temp
 
-# Noise robust detector additions
-noise_robust_detector/test_demo/
-noise_robust_detector/models/aasist_fine_tuned.pth
-noise_robust_detector/__pycache__/
-noise_robust_detector/scripts/__pycache__/
+# Keep only these important files in the project root:
+# - config/ (configuration files)
+# - models/ (Python model definitions, NOT weights)
+# - scripts/ (Python scripts)
+# - utils.py (utility functions)
+# - requirements.txt (dependencies)
+# - README.md (documentation)
+# - .gitignore (this file)
+# - project_config.py (project configuration)
 
-# Training results and outputs
-noise_robust_detector/results/
 
-# Large model weights from original AASIST
-models/weights/
+# ============================================================================
+# VIRTUAL ENVIRONMENTS - EXCLUDE COMPLETELY
+# ============================================================================
 
-# Any other test directories
-test_demo/
+# Python virtual environments
+aasist_env/
+venv/
+env/
+.venv/
+ENV/
+
+# Virtual environment activation scripts
+Scripts/
+bin/
+Include/
+Lib/
+lib64/
+pyvenv.cfg
+pip-selfcheck.json
